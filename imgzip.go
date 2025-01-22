@@ -2,7 +2,7 @@
  * @Author: Vincent Yang
  * @Date: 2025-01-22 18:14:46
  * @LastEditors: Vincent Yang
- * @LastEditTime: 2025-01-22 18:17:30
+ * @LastEditTime: 2025-01-22 18:32:38
  * @FilePath: /imgzip/imgzip.go
  * @Telegram: https://t.me/missuo
  * @GitHub: https://github.com/missuo
@@ -16,6 +16,7 @@ import (
 	"fmt"
 	_ "image/jpeg"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -61,8 +62,15 @@ func main() {
 	filename := strings.TrimSuffix(filepath.Base(inputPath), ext)
 	outputPath := fmt.Sprintf("%s_compressed_%s%s", filename, timestamp, ext)
 
+	// Get original file size
+	inputInfo, err := os.Stat(inputPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	originalSize := inputInfo.Size() / 1024 // Convert to KB
+
 	// Compress the image
-	err := compressImage(inputPath, outputPath, quality)
+	err = compressImage(inputPath, outputPath, quality)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -75,8 +83,10 @@ func main() {
 	compressedSize := outputInfo.Size() / 1024 // Convert to KB
 
 	fmt.Printf("Compression complete!\n")
+	fmt.Printf("Original size: %d KB\n", originalSize)
+	fmt.Printf("Compressed size: %d KB\n", compressedSize)
+	fmt.Printf("Compression ratio: %.2f%%\n", float64(compressedSize)/float64(originalSize)*100)
 	fmt.Printf("Output file: %s\n", outputPath)
-	fmt.Printf("File size: %d KB\n", compressedSize)
 }
 
 func compressImage(inputPath, outputPath string, quality int) error {
@@ -91,6 +101,18 @@ func compressImage(inputPath, outputPath string, quality int) error {
 	width := bounds.Max.X
 	height := bounds.Max.Y
 
+	// Quality-based initial scale calculation
+	// Higher quality means less aggressive scaling
+	qualityScale := float64(quality) / 100.0
+	initialScale := math.Max(0.1, qualityScale) // Ensure minimum scale is 0.1
+
+	// Calculate initial dimensions based on quality
+	newWidth := int(float64(width) * initialScale)
+	newHeight := int(float64(height) * initialScale)
+
+	// First resize based on quality
+	resized := imaging.Resize(src, newWidth, newHeight, imaging.Lanczos)
+
 	// Create temporary file for compression testing
 	tempFile, err := os.CreateTemp("", "compress_*.jpg")
 	if err != nil {
@@ -98,32 +120,29 @@ func compressImage(inputPath, outputPath string, quality int) error {
 	}
 	defer os.Remove(tempFile.Name())
 
-	// First attempt: compress with specified quality
-	err = imaging.Save(src, tempFile.Name(), imaging.JPEGQuality(quality))
+	// Try to save with current dimensions and quality
+	err = imaging.Save(resized, tempFile.Name(), imaging.JPEGQuality(quality))
 	if err != nil {
 		return fmt.Errorf("failed to save compressed image: %v", err)
 	}
 
-	// Check file size
+	// Check if size meets target
 	fileInfo, err := tempFile.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to get file info: %v", err)
 	}
 
-	// If file is still too large, adjust image dimensions
 	currentSize := fileInfo.Size()
 	if currentSize > targetSize {
-		// Calculate scale factor to reach target size
-		scale := float64(targetSize) / float64(currentSize)
-		newWidth := int(float64(width) * scale)
-		newHeight := int(float64(height) * scale)
-
-		// Resize image
-		src = imaging.Resize(src, newWidth, newHeight, imaging.Lanczos)
+		// If still too large, apply additional scaling while maintaining aspect ratio
+		scale := math.Sqrt(float64(targetSize) / float64(currentSize))
+		finalWidth := int(float64(newWidth) * scale)
+		finalHeight := int(float64(newHeight) * scale)
+		resized = imaging.Resize(resized, finalWidth, finalHeight, imaging.Lanczos)
 	}
 
 	// Save final image
-	err = imaging.Save(src, outputPath, imaging.JPEGQuality(quality))
+	err = imaging.Save(resized, outputPath, imaging.JPEGQuality(quality))
 	if err != nil {
 		return fmt.Errorf("failed to save final image: %v", err)
 	}
