@@ -1,3 +1,15 @@
+/*
+ * @Author: Vincent Yang
+ * @Date: 2025-01-22 18:14:46
+ * @LastEditors: Vincent Yang
+ * @LastEditTime: 2025-01-22 18:17:30
+ * @FilePath: /imgzip/imgzip.go
+ * @Telegram: https://t.me/missuo
+ * @GitHub: https://github.com/missuo
+ *
+ * Copyright © 2025 by Vincent, All Rights Reserved.
+ */
+
 package main
 
 import (
